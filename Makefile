@@ -4,15 +4,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-include Makefile.defs 
+include Makefile.defs
 
 all: build-bin
 
 .PHONY: all build install
 
-CONTROLLER_BIN_SUBDIRS := cmd/daemon 
+CONTROLLER_BIN_SUBDIRS := cmd/daemon
 
-SUBDIRS := $(CONTROLLER_BIN_SUBDIRS) 
+SUBDIRS := $(CONTROLLER_BIN_SUBDIRS)
 
 build-bin:
 	for i in $(SUBDIRS); do $(MAKE) $(SUBMAKEOPTS) -C $$i all; done
@@ -30,7 +30,7 @@ install-bash-completion:
 .PHONY: image
 image:
 	@for NAME in $(IMAGES); do \
-		docker build --build-arg RACE --build-arg GIT_COMMIT_VERSION=$(GIT_COMMIT_VERSION) \
+		docker build --platform linux/amd64 --build-arg RACE --build-arg GIT_COMMIT_VERSION=$(GIT_COMMIT_VERSION) \
 				--build-arg GIT_COMMIT_TIME=$(GIT_COMMIT_TIME) \
 				--build-arg VERSION=$(GIT_COMMIT_VERSION) \
 				--file $(ROOT_DIR)/images/"$${NAME##*/}"/Dockerfile \

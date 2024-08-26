@@ -18,6 +18,7 @@ import (
 	"github.com/kcrow-io/kcrow/pkg/ulimit"
 	"github.com/kcrow-io/kcrow/pkg/util"
 	"github.com/kcrow-io/kcrow/pkg/vmvol"
+	"github.com/kcrow-io/kcrow/pkg/xpu/gpu"
 
 	"k8s.io/klog/v2"
 )
@@ -141,9 +142,10 @@ func initControllerServiceManagers(ctrlctx *ControllerContext) {
 	coci := cgroup.CgroupManager(noc, nsc, pom)
 	roci := ulimit.RlimitManager(noc, nsc, pom)
 	voli := vmvol.New(ctrlctx.InnerCtx, volm, rmm, pom)
+	goci := gpu.New(rmm)
 
 	// registry manager
-	hub, err := pkg.New(ctrlctx.InnerCtx, ctrlctx.Cfg.NriSockPath, coci, roci, voli)
+	hub, err := pkg.New(ctrlctx.InnerCtx, ctrlctx.Cfg.NriSockPath, coci, roci, voli, goci)
 
 	if err != nil {
 		panic(err)

@@ -3,6 +3,7 @@ package gpu
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -11,6 +12,9 @@ import (
 	"github.com/kcrow-io/kcrow/pkg/oci"
 	"github.com/kcrow-io/kcrow/pkg/util"
 	"github.com/kcrow-io/kcrow/pkg/xpu/gpu/image"
+
+	// nvidiaconfig "github.com/NVIDIA/nvidia-container-toolkit/internal/config"
+
 	rspec "github.com/opencontainers/runtime-spec/specs-go"
 	"k8s.io/klog/v2"
 )
@@ -19,6 +23,11 @@ const (
 	// only legacy mode will process
 	legacyMode = "legacy"
 	cdiMode    = "cdi"
+	// NVIDIAContainerRuntimeHookExecutable is the executable name for the NVIDIA Container Runtime Hook
+	NVIDIAContainerRuntimeHookExecutable = "nvidia-container-runtime-hook"
+	// NVIDIAContainerToolkitExecutable is the executable name for the NVIDIA Container Toolkit (an alias for the NVIDIA Container Runtime Hook)
+	NVIDIAContainerToolkitExecutable = "nvidia-container-toolkit"
+	NvidiaContainerRuntimeHookPath   = "/usr/bin/nvidia-container-runtime-hook"
 )
 
 var (
@@ -54,6 +63,7 @@ func (g *Gpu) Name() string {
 }
 
 func (g *Gpu) RuntimeUpdate(ri *k8s.RuntimeItem) {
+	klog.Infof("process RuntimeUpdate")
 	if ri == nil {
 		return
 	}
@@ -76,12 +86,14 @@ func (g *Gpu) RuntimeUpdate(ri *k8s.RuntimeItem) {
 
 // TODO
 func (g *Gpu) Process(ctx context.Context, im *oci.Item) error {
+	klog.Infof("start process")
 	if im == nil || im.Ct == nil {
 		klog.Warningf("not found container info")
 		return nil
 	}
 	var (
-		ct   = im.Ct
+		ct = im.Ct
+		// csv 暂不支持
 		mode = legacyMode
 	)
 	visibleDevices := util.GetValueFromEnvByKey(ct.Env, visibleDevicesEnvvar)
@@ -102,6 +114,33 @@ func (g *Gpu) Process(ctx context.Context, im *oci.Item) error {
 		return nil
 	}
 
+	// mode modify
+	if ct.Hooks != nil && ct.Hooks.Prestart != nil {
+		for _, hook := range ct.Hooks.Prestart {
+			hook := hook
+			if isNVIDIAContainerRuntimeHook(hook) {
+				klog.Infof("Existing nvidia prestart hook (%v) found in OCI spec", hook.Path)
+				return nil
+			}
+		}
+	}
+	// TODO 如何自定义路径
+	path := NvidiaContainerRuntimeHookPath
+	klog.Infof("Using default prestart hook path: %v", path)
+	args := []string{filepath.Base(path)}
+	if im.Adjust.Hooks == nil {
+		im.Adjust.Hooks = &api.Hooks{}
+	}
+	if im.Adjust.Hooks.Prestart == nil {
+		im.Adjust.Hooks.Prestart = []*api.Hook{}
+	}
+	im.Adjust.Hooks.Prestart = append(im.Adjust.Hooks.Prestart, &api.Hook{
+		Path: path,
+		Args: append(args, "prestart"),
+	})
+	// TODO: graphics modify
+	// TODO: featuregate modify
+
 	// TODO support more runtime
 	klog.Infof("process nvidiagpu device, in vm runtime: %v", g.rmctl.Isvm(im.Sb.RuntimeHandler))
 
@@ -115,4 +154,18 @@ func toMount(m []*api.Mount) []rspec.Mount {
 		dst[i] = v.ToOCI(nil)
 	}
 	return dst
+}
+
+func isNVIDIAContainerRuntimeHook(hook *api.Hook) bool {
+	if hook == nil {
+		return false
+	}
+	bins := map[string]struct{}{
+		NVIDIAContainerRuntimeHookExecutable: {},
+		NVIDIAContainerToolkitExecutable:     {},
+	}
+
+	_, exists := bins[filepath.Base(hook.Path)]
+
+	return exists
 }
